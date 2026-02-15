@@ -1,6 +1,5 @@
 package com.github.tbcd.factory;
 
-import java.beans.Customizer;
 import java.util.List;
 import java.util.function.Consumer;
 
