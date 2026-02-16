@@ -36,6 +36,14 @@ public interface EntityFactory<T> {
 	T random();
 
 	/**
+	 * Return a random entity with the given values from the datasource
+	 * If no entity exists, create an entity with random values and updated with the given values then save it into the datasource
+	 *
+	 * @return The random or created entity
+	 */
+	T randomWith(Consumer<T> customizer);
+
+	/**
 	 * Save the given entity to the datasource
 	 *
 	 * @param entity The entity to save
