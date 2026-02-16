@@ -18,11 +18,11 @@ public abstract class AbstractEntityFactory<T> implements EntityFactory<T> {
 	}
 
 	protected Model<T> getModel() {
-		return Instancio.of(getClassz())
+		return Instancio.of(getClazz())
 				.toModel();
 	}
 
-	protected abstract Class<T> getClassz();
+	protected abstract Class<T> getClazz();
 
 	@Override
 	public T save(T entity) {
@@ -55,7 +55,7 @@ public abstract class AbstractEntityFactory<T> implements EntityFactory<T> {
 	@Override
 	public T randomWith(Consumer<T> customizer) {
 		try {
-			T probe = this.getClassz().getDeclaredConstructor().newInstance();
+			T probe = this.getClazz().getDeclaredConstructor().newInstance();
 			customizer.accept(probe);
 			ExampleMatcher matcher = ExampleMatcher.matching().withIgnoreNullValues();
 			Example<T> example = Example.of(probe, matcher);
