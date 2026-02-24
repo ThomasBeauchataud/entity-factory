@@ -1,32 +1,112 @@
 package com.github.tbcd.factory;
 
 import org.instancio.Instancio;
+import org.instancio.InstancioApi;
 import org.instancio.Model;
-import org.springframework.data.domain.Example;
-import org.springframework.data.domain.ExampleMatcher;
-import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.util.List;
 import java.util.function.Consumer;
 
+/**
+ * Skeletal implementation of {@link EntityFactory} that generates random
+ * entities using <a href="https://www.instancio.org/">Instancio</a>.
+ *
+ * <p>Subclasses must implement:</p>
+ * <ul>
+ *     <li>{@link #getClazz()} — the entity class to generate</li>
+ *     <li>{@link #save(Object)} — the persistence logic</li>
+ *     <li>{@link #random(int)} — retrieval of existing entities from the datasource</li>
+ *     <li>{@link #randomWith(int, Consumer)} — retrieval of existing entities matching criteria</li>
+ * </ul>
+ *
+ * <p>The following methods can optionally be overridden to customize behavior:</p>
+ * <ul>
+ *     <li>{@link #getModel()} — to customize Instancio generation rules
+ *         (e.g. ignoring fields, constraining values)</li>
+ *     <li>{@link #afterInstantiate(Object)} — to apply post-instantiation
+ *         transformations before persistence (e.g. clearing IDs, computing
+ *         derived fields)</li>
+ * </ul>
+ *
+ * @param <T> the type of entity this factory manages
+ * @see EntityFactory
+ * @see AbstractJpaEntityFactory
+ */
 public abstract class AbstractEntityFactory<T> implements EntityFactory<T> {
 
-	private final JpaRepository<T, ?> jpaRepository;
-
-	public AbstractEntityFactory(JpaRepository<T, ?> jpaRepository) {
-		this.jpaRepository = jpaRepository;
-	}
-
-	protected Model<T> getModel() {
-		return Instancio.of(getClazz())
-				.toModel();
-	}
-
+	/**
+	 * Returns the entity class managed by this factory.
+	 *
+	 * <p>This class is used by the default {@link #getModel()} implementation
+	 * to create the Instancio model for random entity generation.</p>
+	 *
+	 * <h4>Example</h4>
+	 * <pre>{@code
+	 * @Override
+	 * protected Class<Book> getClazz() {
+	 *     return Book.class;
+	 * }
+	 * }</pre>
+	 *
+	 * @return the entity class, never {@code null}
+	 */
 	protected abstract Class<T> getClazz();
 
-	@Override
-	public T save(T entity) {
-		return jpaRepository.save(entity);
+	/**
+	 * Returns the Instancio {@link Model} used to generate random instances
+	 * of the entity.
+	 *
+	 * <p>Override this method to customize the generation rules, such as
+	 * constraining field values, ignoring certain fields or supplying
+	 * custom generators.</p>
+	 *
+	 * <p>The default implementation builds a model from {@link #getClazz()}
+	 * with no additional customization.</p>
+	 *
+	 * <h4>Example</h4>
+	 * <pre>{@code
+	 * @Override
+	 * protected Model<Book> getModel() {
+	 *     return Instancio.of(super.getModel())
+	 *             .ignore(field(Book::getId))
+	 *             .generate(field(Book::getPrice), gen -> gen.doubles().range(1.0, 100.0))
+	 *             .toModel();
+	 * }
+	 * }</pre>
+	 *
+	 * @return the Instancio model for entity generation, never {@code null}
+	 * @see <a href="https://www.instancio.org/user-guide/#creating-a-model">Instancio Model documentation</a>
+	 */
+	protected Model<T> getModel() {
+		InstancioApi<T> api = Instancio.of(getClazz());
+		return api.toModel();
+	}
+
+	/**
+	 * Hook called after each entity is instantiated by Instancio and before
+	 * it is persisted via {@link #save(Object)}.
+	 *
+	 * <p>Override this method to apply transformations that cannot be expressed
+	 * through the Instancio {@link Model}, such as clearing auto-generated IDs,
+	 * computing derived fields or setting up relationships with other entities.</p>
+	 *
+	 * <p>The default implementation returns the entity unchanged.</p>
+	 *
+	 * <h4>Example</h4>
+	 * <pre>{@code
+	 * @Override
+	 * protected Book afterInstantiate(Book book) {
+	 *     book.setId(null); // let the database generate the ID
+	 *     book.setSlug(Slugify.of(book.getTitle()));
+	 *     return book;
+	 * }
+	 * }</pre>
+	 *
+	 * @param entity the newly instantiated entity, never {@code null}
+	 * @return the entity to persist, never {@code null}
+	 */
+	protected T afterInstantiate(T entity) {
+		return entity;
 	}
 
 	@Override
@@ -34,6 +114,14 @@ public abstract class AbstractEntityFactory<T> implements EntityFactory<T> {
 		T instance = Instancio.of(getModel()).create();
 		instance = afterInstantiate(instance);
 		return save(instance);
+	}
+
+	@Override
+	public List<T> create(int count) {
+		return Instancio.ofList(getModel()).size(count).create().stream().map(instance -> {
+			instance = afterInstantiate(instance);
+			return save(instance);
+		}).toList();
 	}
 
 	@Override
@@ -45,33 +133,11 @@ public abstract class AbstractEntityFactory<T> implements EntityFactory<T> {
 	}
 
 	@Override
-	public List<T> many(int count) {
+	public List<T> createWith(int count, Consumer<T> customizer) {
 		return Instancio.ofList(getModel()).size(count).create().stream().map(instance -> {
+			customizer.accept(instance);
 			instance = afterInstantiate(instance);
 			return save(instance);
 		}).toList();
-	}
-
-	@Override
-	public T randomWith(Consumer<T> customizer) {
-		try {
-			T probe = this.getClazz().getDeclaredConstructor().newInstance();
-			customizer.accept(probe);
-			ExampleMatcher matcher = ExampleMatcher.matching().withIgnoreNullValues();
-			Example<T> example = Example.of(probe, matcher);
-			return jpaRepository.findOne(example).orElseGet(() -> this.createWith(customizer));
-		} catch (ReflectiveOperationException e) {
-			throw new RuntimeException(e);
-		}
-	}
-
-	@Override
-	public T random() {
-		List<T> all = jpaRepository.findAll();
-		return all.isEmpty() ? create() : all.getFirst();
-	}
-
-	protected T afterInstantiate(T entity) {
-		return entity;
 	}
 }
