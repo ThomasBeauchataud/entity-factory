@@ -169,11 +169,6 @@ public class AbstractEntityFactoryTest {
 	public static class BookEntityFactory extends AbstractEntityFactory<Book> {
 
 		@Override
-		protected Class<Book> getClazz() {
-			return Book.class;
-		}
-
-		@Override
 		public List<Book> random(int count) {
 			return create(count);
 		}

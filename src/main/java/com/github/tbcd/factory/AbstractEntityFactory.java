@@ -4,6 +4,8 @@ import org.instancio.Instancio;
 import org.instancio.InstancioApi;
 import org.instancio.Model;
 
+import java.lang.reflect.ParameterizedType;
+import java.lang.reflect.Type;
 import java.util.List;
 import java.util.function.Consumer;
 
@@ -13,7 +15,6 @@ import java.util.function.Consumer;
  *
  * <p>Subclasses must implement:</p>
  * <ul>
- *     <li>{@link #getClazz()} — the entity class to generate</li>
  *     <li>{@link #save(Object)} — the persistence logic</li>
  *     <li>{@link #random(int)} — retrieval of existing entities from the datasource</li>
  *     <li>{@link #randomWith(int, Consumer)} — retrieval of existing entities matching criteria</li>
@@ -21,6 +22,8 @@ import java.util.function.Consumer;
  *
  * <p>The following methods can optionally be overridden to customize behavior:</p>
  * <ul>
+ *     <li>{@link #getClazz()} — resolved automatically via reflection;
+ *         override only if the resolution fails (e.g. complex inheritance hierarchies)</li>
  *     <li>{@link #getModel()} — to customize Instancio generation rules
  *         (e.g. ignoring fields, constraining values)</li>
  *     <li>{@link #afterInstantiate(Object)} — to apply post-instantiation
@@ -37,20 +40,28 @@ public abstract class AbstractEntityFactory<T> implements EntityFactory<T> {
 	/**
 	 * Returns the entity class managed by this factory.
 	 *
+	 * <p>The default implementation resolves the entity class automatically
+	 * by inspecting the generic type parameter of the subclass hierarchy.
+	 * Override this method only if the automatic resolution fails
+	 * (e.g. with complex or non-standard inheritance hierarchies).</p>
+	 *
 	 * <p>This class is used by the default {@link #getModel()} implementation
 	 * to create the Instancio model for random entity generation.</p>
 	 *
-	 * <h4>Example</h4>
-	 * <pre>{@code
-	 * @Override
-	 * protected Class<Book> getClazz() {
-	 *     return Book.class;
-	 * }
-	 * }</pre>
-	 *
 	 * @return the entity class, never {@code null}
+	 * @throws IllegalStateException if the entity class cannot be resolved
 	 */
-	protected abstract Class<T> getClazz();
+	@SuppressWarnings("unchecked")
+	protected Class<T> getClazz() {
+		Type type = getClass().getGenericSuperclass();
+		while (type instanceof Class<?> c) {
+			type = c.getGenericSuperclass();
+		}
+		if (type instanceof ParameterizedType pt) {
+			return (Class<T>) pt.getActualTypeArguments()[0];
+		}
+		throw new IllegalStateException("Cannot resolve entity class");
+	}
 
 	/**
 	 * Returns the Instancio {@link Model} used to generate random instances
