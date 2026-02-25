@@ -1,5 +1,9 @@
 package com.github.tbcd.factory;
 
+import jakarta.validation.ConstraintViolation;
+import jakarta.validation.ConstraintViolationException;
+import jakarta.validation.Validation;
+import jakarta.validation.Validator;
 import org.instancio.Instancio;
 import org.instancio.InstancioApi;
 import org.instancio.Model;
@@ -7,6 +11,7 @@ import org.instancio.Model;
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
 import java.util.List;
+import java.util.Set;
 import java.util.function.Consumer;
 
 /**
@@ -36,6 +41,8 @@ import java.util.function.Consumer;
  * @see AbstractJpaEntityFactory
  */
 public abstract class AbstractEntityFactory<T> implements EntityFactory<T> {
+
+	private static final Validator validator = Validation.buildDefaultValidatorFactory().getValidator();
 
 	/**
 	 * Returns the entity class managed by this factory.
@@ -94,6 +101,27 @@ public abstract class AbstractEntityFactory<T> implements EntityFactory<T> {
 	}
 
 	/**
+	 * Validates the given entity against its Bean Validation constraints
+	 * (e.g. {@code @NotNull}, {@code @NotBlank}, {@code @Min}, {@code @Email}).
+	 *
+	 * <p>Called automatically after {@link #afterInstantiate(Object)} and any
+	 * customizer has been applied, before persistence.</p>
+	 *
+	 * <p>If validation fails, a {@link jakarta.validation.ConstraintViolationException}
+	 * is thrown with all detected violations. This helps detect Instancio models
+	 * that generate data incompatible with the entity's constraints.</p>
+	 *
+	 * @param entity the entity to validate, never {@code null}
+	 * @throws jakarta.validation.ConstraintViolationException if any constraint is violated
+	 */
+	protected void validate(T entity) {
+		Set<ConstraintViolation<T>> violations = validator.validate(entity);
+		if (!violations.isEmpty()) {
+			throw new ConstraintViolationException(violations);
+		}
+	}
+
+	/**
 	 * Hook called after each entity is instantiated by Instancio, and before
 	 * it is persisted via {@link #save(Object)}.
 	 *
@@ -122,14 +150,20 @@ public abstract class AbstractEntityFactory<T> implements EntityFactory<T> {
 
 	@Override
 	public List<T> make(int count) {
-		return Instancio.ofList(getModel()).size(count).create().stream().map(this::afterInstantiate).toList();
+		return Instancio.ofList(getModel()).size(count).create().stream().map(instance -> {
+			instance = afterInstantiate(instance);
+			validate(instance);
+			return instance;
+		}).toList();
 	}
 
 	@Override
 	public List<T> makeWith(int count, Consumer<T> customizer) {
 		return Instancio.ofList(getModel()).size(count).create().stream().map(instance -> {
 			customizer.accept(instance);
-			return afterInstantiate(instance);
+			instance = afterInstantiate(instance);
+			validate(instance);
+			return instance;
 		}).toList();
 	}
 }
