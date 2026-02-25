@@ -6,6 +6,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.function.Consumer;
 
@@ -51,6 +52,11 @@ public abstract class AbstractJpaEntityFactory<T> extends AbstractEntityFactory<
 	@Override
 	public T save(T entity) {
 		return jpaRepository.save(entity);
+	}
+
+	@Override
+	public List<T> save(Collection<T> entities) {
+		return jpaRepository.saveAll(entities);
 	}
 
 	@Override

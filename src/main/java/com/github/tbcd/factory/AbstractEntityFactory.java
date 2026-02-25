@@ -23,11 +23,11 @@ import java.util.function.Consumer;
  * <p>The following methods can optionally be overridden to customize behavior:</p>
  * <ul>
  *     <li>{@link #getClazz()} — resolved automatically via reflection;
- *         override only if the resolution fails (e.g. complex inheritance hierarchies)</li>
+ *         override only if the resolution fails (e.g., complex inheritance hierarchies)</li>
  *     <li>{@link #getModel()} — to customize Instancio generation rules
  *         (e.g. ignoring fields, constraining values)</li>
  *     <li>{@link #afterInstantiate(Object)} — to apply post-instantiation
- *         transformations before persistence (e.g. clearing IDs, computing
+ *         transformations before persistence (e.g., clearing IDs, computing
  *         derived fields)</li>
  * </ul>
  *
@@ -43,7 +43,7 @@ public abstract class AbstractEntityFactory<T> implements EntityFactory<T> {
 	 * <p>The default implementation resolves the entity class automatically
 	 * by inspecting the generic type parameter of the subclass hierarchy.
 	 * Override this method only if the automatic resolution fails
-	 * (e.g. with complex or non-standard inheritance hierarchies).</p>
+	 * (e.g., with complex or non-standard inheritance hierarchies).</p>
 	 *
 	 * <p>This class is used by the default {@link #getModel()} implementation
 	 * to create the Instancio model for random entity generation.</p>
@@ -94,7 +94,7 @@ public abstract class AbstractEntityFactory<T> implements EntityFactory<T> {
 	}
 
 	/**
-	 * Hook called after each entity is instantiated by Instancio and before
+	 * Hook called after each entity is instantiated by Instancio, and before
 	 * it is persisted via {@link #save(Object)}.
 	 *
 	 * <p>Override this method to apply transformations that cannot be expressed
@@ -121,34 +121,15 @@ public abstract class AbstractEntityFactory<T> implements EntityFactory<T> {
 	}
 
 	@Override
-	public T create() {
-		T instance = Instancio.of(getModel()).create();
-		instance = afterInstantiate(instance);
-		return save(instance);
+	public List<T> make(int count) {
+		return Instancio.ofList(getModel()).size(count).create().stream().map(this::afterInstantiate).toList();
 	}
 
 	@Override
-	public List<T> create(int count) {
-		return Instancio.ofList(getModel()).size(count).create().stream().map(instance -> {
-			instance = afterInstantiate(instance);
-			return save(instance);
-		}).toList();
-	}
-
-	@Override
-	public T createWith(Consumer<T> customizer) {
-		T instance = this.create();
-		customizer.accept(instance);
-		instance = afterInstantiate(instance);
-		return save(instance);
-	}
-
-	@Override
-	public List<T> createWith(int count, Consumer<T> customizer) {
+	public List<T> makeWith(int count, Consumer<T> customizer) {
 		return Instancio.ofList(getModel()).size(count).create().stream().map(instance -> {
 			customizer.accept(instance);
-			instance = afterInstantiate(instance);
-			return save(instance);
+			return afterInstantiate(instance);
 		}).toList();
 	}
 }
